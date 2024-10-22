@@ -571,12 +571,12 @@ configuration:
     group: ${SW_CONFIG_NACOS_SERVER_GROUP:skywalking}
     # Nacos Configuration namespace
     namespace: ${SW_CONFIG_NACOS_SERVER_NAMESPACE:}
+    contextPath: ${SW_CONFIG_NACOS_CONTEXT_PATH:/nacos}
     # Unit seconds, sync period. Default fetch every 60 seconds.
     period: ${SW_CONFIG_NACOS_PERIOD:60}
     # Nacos auth username
     username: ${SW_CONFIG_NACOS_USERNAME:""}
     password: ${SW_CONFIG_NACOS_PASSWORD:""}
-    contextPath: ${SW_CONFIG_NACOS_CONTEXT_PATH:/nacos}
     # Nacos auth accessKey
     accessKey: ${SW_CONFIG_NACOS_ACCESSKEY:""}
     secretKey: ${SW_CONFIG_NACOS_SECRETKEY:""}
