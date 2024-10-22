@@ -315,6 +315,60 @@
                     "meter_oap_jvm_class_total_unloaded_count",
                     "meter_oap_jvm_class_total_loaded_count"
                   ]
+                },
+                {
+                  "x": 0,
+                  "y": 39,
+                  "w": 6,
+                  "h": 11,
+                  "i": "16",
+                  "type": "Widget",
+                  "expressions": [
+                    "relabels(meter_oap_graphql_query_latency_percentile{p='50,75,90,95,99'},p='50,75,90,95,99',percentile='50,75,90,95,99')"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "GraphQL Query Latency (ms)"
+                  },
+                  "metricConfig": [
+                    {
+                      "unit": "ns"
+                    }
+                  ]
+                },
+                {
+                  "x": 6,
+                  "y": 39,
+                  "w": 6,
+                  "h": 11,
+                  "i": "17",
+                  "type": "Widget",
+                  "widget": {
+                    "title": "GraphQL Query Count"
+                  },
+                  "graph": {
+                    "type": "Bar",
+                    "showBackground": true
+                  },
+                  "expressions": [
+                    "meter_oap_instance_graphql_query_count",
+                    "meter_oap_instance_graphql_query_error_count"
+                  ],
+                  "metricConfig": [
+                    {
+                      "label": "Total Count"
+                    },
+                    {
+                      "label": "Error Count"
+                    }
+                  ]
                 }
               ]
             },
@@ -447,7 +501,7 @@
                   ]
                 },
                 {
-                  "x": 6,
+                  "x": 12,
                   "y": 13,
                   "w": 6,
                   "h": 13,
@@ -466,6 +520,167 @@
                   },
                   "expressions": [
                     "relabels(meter_oap_instance_k8s_als_latency_percentile{p='50,75,90,95,99'},p='50,75,90,95,99',percentile='50,75,90,95,99')"
+                  ]
+                },
+                {
+                  "x": 6,
+                  "y": 26,
+                  "w": 6,
+                  "h": 13,
+                  "i": "19",
+                  "type": "Widget",
+                  "expressions": [
+                    "meter_oap_otel_metrics_received"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Metrics (Requests / Second)"
+                  },
+                  "metricConfig": [
+                    {
+                      "label": "Received Requests"
+                    }
+                  ]
+                },
+                {
+                  "x": 0,
+                  "y": 39,
+                  "w": 6,
+                  "h": 13,
+                  "i": "20",
+                  "type": "Widget",
+                  "expressions": [
+                    "meter_oap_otel_logs_received"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Logs (Requests / Second)"
+                  }
+                },
+                {
+                  "x": 12,
+                  "y": 26,
+                  "w": 6,
+                  "h": 13,
+                  "i": "21",
+                  "type": "Widget",
+                  "expressions": [
+                    "meter_oap_otel_spans_received"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Spans (Requests / Second)"
+                  },
+                  "metricConfig": [
+                    {
+                      "unit": "Requests / Second"
+                    }
+                  ]
+                },
+                {
+                  "x": 0,
+                  "y": 26,
+                  "w": 6,
+                  "h": 13,
+                  "i": "22",
+                  "type": "Widget",
+                  "expressions": [
+                    "relabels(meter_oap_otel_metrics_latency_percentile{p='50,75,90,95,99'},p='50,75,90,95,99',percentile='50,75,90,95,99')"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Metrics Latency (ms / min)"
+                  }
+                },
+                {
+                  "x": 18,
+                  "y": 26,
+                  "w": 6,
+                  "h": 13,
+                  "i": "23",
+                  "type": "Widget",
+                  "expressions": [
+                    "relabels(meter_oap_otel_spans_latency_percentile{p='50,75,90,95,99'},p='50,75,90,95,99',percentile='50,75,90,95,99')"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Spans Latency (ms / min)"
+                  }
+                },
+                {
+                  "x": 18,
+                  "y": 13,
+                  "w": 6,
+                  "h": 13,
+                  "i": "24",
+                  "type": "Widget",
+                  "expressions": [
+                    "relabels(meter_oap_otel_logs_latency_percentile{p='50,75,90,95,99'},p='50,75,90,95,99',percentile='50,75,90,95,99')"
+                  ],
+                  "graph": {
+                    "type": "Line",
+                    "step": false,
+                    "smooth": false,
+                    "showSymbol": true,
+                    "showXAxis": true,
+                    "showYAxis": true
+                  },
+                  "widget": {
+                    "title": "OpenTelemetry Logs Latency (ms / min)"
+                  }
+                },
+                {
+                  "x": 6,
+                  "y": 13,
+                  "w": 6,
+                  "h": 13,
+                  "i": "25",
+                  "type": "Widget",
+                  "widget": {
+                    "title": "K8S ALS Log Streams (Per Minute)"
+                  },
+                  "graph": {
+                    "type": "Bar",
+                    "showBackground": true
+                  },
+                  "expressions": [
+                    "meter_oap_instance_k8s_als_streams",
+                    "meter_oap_instance_k8s_als_error_streams"
                   ]
                 }
               ]

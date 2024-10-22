@@ -1,10 +1,10 @@
-# Support ActiveMQ classic Monitoring
+# Support Kong Monitoring
 
 ## Motivation
 
-[Apache ActiveMQ Classic](https://activemq.apache.org/components/classic/) is a popular and powerful open source messaging and Integration Patterns server. It supports many Cross Language Clients and Protocols, comes with easy to use Enterprise Integration Patterns and many advanced features.
-
-Now I want to add ActiveMQ Classic monitoring via the [OpenTelemetry Collector](https://opentelemetry.io/docs) which fetches metrics from [jmx prometheus exporter](https://github.com/prometheus/jmx_exporter) run as a Java Agent.
+[**Kong**](https://github.com/Kong/kong) or **Kong API Gateway** is a cloud-native, platform-agnostic, scalable API Gateway 
+distinguished for its high performance and extensibility via plugins. Now I want to add Kong monitoring via the OpenTelemetry Collector, 
+which fetches metrics from it's own HTTP endpoint to expose metrics data for [Prometheus](https://prometheus.io/).
 
 ## Architecture Graph
 
@@ -12,82 +12,43 @@ There is no significant architecture-level change.
 
 ## Proposed Changes
 
-`Apache ActiveMQ Classic`  has extensive support for JMX to allow you to monitor and control the behavior of the broker via the JMX MBeans.
+1. Kong expose its own [metrics](https://docs.konghq.com/hub/kong-inc/prometheus/) via HTTP endpoint to opentelemetry collector, OpenTelemetry Collector fetches metrics from it and pushes metrics to SkyWalking OTEL Receiver via OpenTelemetry exporter.
+2. The SkyWalking OAP Server parses the expression with MAL to filter/calculate/aggregate and store the results.
+3. These metrics can be displayed via the SkyWalking UI, and the metrics can be customized for display on the UI dashboard.
 
-[Jmx prometheus exporter](https://github.com/prometheus/jmx_exporter) collects metrics data from ActiveMQ classic, this exporter is intended to be run as a Java Agent, exposing a HTTP server and serving metrics of the local JVM.
+### Kong Request Supported Metrics
 
-Using openTelemetry receiver to fetch these metrics to SkyWalking OAP server.
+| Monitoring Panel | Unit  | Metric Name                                                                                                       | Description                                          | Data Source |
+|------------------|-------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|-------------|
+| Bandwidth        | bytes | meter_kong_service_http_bandwidth<br />meter_kong_instance_http_bandwidth<br />meter_kong_endpoint_http_bandwidth | Total bandwidth (ingress/egress) throughput          | Kong        |
+| HTTP Status      | count | meter_kong_service_http_status<br />meter_kong_instance_http_status<br />meter_kong_endpoint_http_status          | HTTP status codes per consumer/service/route in Kong | Kong        |
+| HTTP Request     | count | meter_kong_service_http_requests<br />meter_kong_instance_http_requests                                           | Total number of requests                             | Kong        |
 
-### ActiveMQ Cluster Supported Metrics
+### Kong Database Supported Metrics
 
-| Monitoring Panel                           |Unit        | Metric Name                                                             | Description                                                                           | Data Source             |
-|--------------------------------------------|------------|-------------------------------------------------------------------------|---------------------------------------------------------------------------------------|-------------------------|
-| System Load Average                        | Count      | meter_activemq_cluster_system_load_average                              | The average system load, range:[0, 10000].                                            | JMX Prometheus Exporter |
-| Thread Count                               | Count      | meter_activemq_cluster_thread_count                                     | Threads currently used by the JVM.                                                    | JMX Prometheus Exporter |
-| Init Heap Memory Usage                     | Bytes      | meter_activemq_cluster_heap_memory_usage_init                           | The initial amount of heap memory available.                                          | JMX Prometheus Exporter |
-| Committed Heap Memory Usage                | Bytes      | meter_activemq_cluster_heap_memory_usage_committed                      | The memory is guaranteed to be available for the JVM to use.                          | JMX Prometheus Exporter |
-| Used Heap Memory Usage                     | Bytes      | meter_activemq_cluster_heap_memory_usage_used                           | The amount of JVM heap memory currently in use.                                       | JMX Prometheus Exporter |
-| Max Heap Memory Usage                      | Bytes      | meter_activemq_cluster_heap_memory_usage_max                            | The maximum possible size of the heap memory.                                         | JMX Prometheus Exporter |
-| GC G1 Old Collection Count                 | Count      | meter_activemq_cluster_gc_g1_old_collection_count                       | The gc count of G1 Old Generation(JDK[9,17]).                                         | JMX Prometheus Exporter |
-| GC G1 Young Collection Count               | Count      | meter_activemq_cluster_gc_g1_young_collection_count                     | The gc count of G1 Young Generation(JDK[9,17]).                                       | JMX Prometheus Exporter |
-| GC G1 Old Collection Time                  | ms         | meter_activemq_cluster_gc_g1_old_collection_time                        | The gc time spent in G1 Old Generation in milliseconds(JDK[9,17]).                    | JMX Prometheus Exporter |
-| GC G1 Young Collection Time                | ms         | meter_activemq_cluster_gc_g1_young_collection_time                      | The gc time spent in G1 Young Generation in milliseconds(JDK[9,17]).                  | JMX Prometheus Exporter |
-| GC Parallel Old Collection Count           | Count      | meter_activemq_cluster_gc_parallel_old_collection_count                 | The gc count of Parallel Old Generation(JDK[6,8]).                                    | JMX Prometheus Exporter |
-| GC Parallel Young Collection Count         | Count      | meter_activemq_cluster_gc_parallel_young_collection_count               | The gc count of Parallel Young Generation(JDK[6,8]).                                  | JMX Prometheus Exporter |
-| GC Parallel Old Collection Time            | ms         | meter_activemq_cluster_gc_parallel_old_collection_time                  | The gc time spent in Parallel Old Generation in milliseconds(JDK[6,8]).               | JMX Prometheus Exporter |
-| GC Parallel Young Collection Time          | ms         | meter_activemq_cluster_gc_parallel_young_collection_time                | The gc time spent in Parallel Young Generation in milliseconds(JDK[6,8]).             | JMX Prometheus Exporter |
-| Enqueue Rate                               | Count/s    | meter_activemq_cluster_enqueue_rate                                     | Number of messages that have been sent to the cluster per second(JDK[6,8]).           | JMX Prometheus Exporter |
-| Dequeue Rate                               | Count/s    | meter_activemq_cluster_dequeue_rate                                     | Number of messages that have been acknowledged or discarded on the cluster per second.| JMX Prometheus Exporter |
-| Dispatch Rate                              | Count/s    | meter_activemq_cluster_dispatch_rate                                    | Number of messages that has been delivered to consumers per second.                   | JMX Prometheus Exporter |
-| Expired Rate                               | Count/s    | meter_activemq_cluster_expired_rate                                     | Number of messages that have been expired per second.                                 | JMX Prometheus Exporter |
-| Average Enqueue Time                       | ms         | meter_activemq_cluster_average_enqueue_time                             | The average time a message was held on this cluster.                                  | JMX Prometheus Exporter |
-| Max Enqueue Time                           | ms         | meter_activemq_cluster_max_enqueue_time                                 | The max time a message was held on this cluster.                                      | JMX Prometheus Exporter |
+| Monitoring Panel | Unit  | Metric Name                                                                         | Description                               | Data Source |
+|------------------|-------|-------------------------------------------------------------------------------------|-------------------------------------------|-------------|
+| DB               | count | meter_kong_service_datastore_reachable<br />meter_kong_instance_datastore_reachable | Datastore reachable from Kong             | Kong        |
+| DB               | bytes | meter_kong_instance_shared_dict_bytes                                               | Allocated slabs in bytes in a shared_dict | Kong        |
+| DB               | bytes | meter_kong_instance_shared_dict_total_bytes                                         | Total capacity in bytes of a shared_dict  | Kong        |
+| DB               | bytes | meter_kong_instance_memory_workers_lua_vms_bytes                                    | Allocated bytes in worker Lua VM          | Kong        |
 
-### ActiveMQ Broker Supported Metrics
+### Kong Latencies Supported Metrics
 
-| Monitoring Panel                           |Unit       | Metric Name                                                             | Description                                                                                    | Data Source             |
-|--------------------------------------------|-----------|-------------------------------------------------------------------------|----------------------------------------------------------------------------------------------- |-------------------------|
-| Uptime                                     | sec       | meter_activemq_broker_uptime                                            | Uptime of the broker in day.                                                                   | JMX Prometheus Exporter |
-| State                                      |           | meter_activemq_broker_state                                             | If slave broker 1 else 0.                                                                      | JMX Prometheus Exporter |
-| Current Connections                        | Count     | meter_activemq_broker_current_connections                               | The number of clients connected to the broker currently.                                       | JMX Prometheus Exporter |
-| Current Producer Count                     | Count     | meter_activemq_broker_current_producer_count                            | The number of producers currently attached to the broker.                                      | JMX Prometheus Exporter |
-| Current Consumer Count                     | Count     | meter_activemq_broker_current_consumer_count                            | The number of consumers consuming messages from the broker.                                    | JMX Prometheus Exporter |
-| Producer Count                             | Count     | meter_activemq_broker_producer_count                                    | Number of message producers active on destinations.                                            | JMX Prometheus Exporter |
-| Consumer Count                             | Count     | meter_activemq_broker_consumer_count                                    | Number of message consumers subscribed to destinations.                                        | JMX Prometheus Exporter |
-| Enqueue Count                              | Count     | meter_activemq_broker_enqueue_count                                     | The total number of messages sent to the broker.                                               | JMX Prometheus Exporter |
-| Dequeue Count                              | Count     | meter_activemq_broker_dequeue_count                                     | The total number of messages the broker has delivered to consumers.                            | JMX Prometheus Exporter |
-| Enqueue Rate                               | Count/sec | meter_activemq_broker_enqueue_rate                                      | The total number of messages sent to the broker per second.                                    | JMX Prometheus Exporter |
-| Dequeue Rate                               | Count/sec | meter_activemq_broker_dequeue_rate                                      | The total number of messages the broker has delivered to consumers per second.                 | JMX Prometheus Exporter |
-| Memory Percent Usage                       | %         | meter_activemq_broker_memory_percent_usage                              | Percentage of configured memory used by the broker.                                            | JMX Prometheus Exporter |
-| Memory Usage                               | Bytes     | meter_activemq_broker_memory_percent_usage                              | Memory used by undelivered messages in bytes.                                                  | JMX Prometheus Exporter |
-| Memory Limit                               | Bytes     | meter_activemq_broker_memory_limit                                      | Memory limited used for holding undelivered messages before paging to temporary storage.       | JMX Prometheus Exporter |
-| Store Percent Usage                        | %         | meter_activemq_broker_store_percent_usage                               | Percentage of available disk space used for persistent message storage.                        | JMX Prometheus Exporter |
-| Store Limit                                | Bytes     | meter_activemq_broker_store_limit                                       | Disk limited  used for persistent messages before producers are blocked.                       | JMX Prometheus Exporter |
-| Temp Percent Usage                         | Bytes     | meter_activemq_broker_temp_percent_usage                                | Percentage of available disk space used for non-persistent message storage.                    | JMX Prometheus Exporter |
-| Temp Limit                                 | Bytes     | meter_activemq_broker_temp_limit                                        | Disk limited used for non-persistent messages and temporary data before producers are blocked. | JMX Prometheus Exporter |
-| Average Message Size                       | Bytes     | meter_activemq_broker_average_message_size                              | Average message size on this broker.                                                           | JMX Prometheus Exporter |
-| Max Message Size                           | Bytes     | meter_activemq_broker_max_message_size                                  | Max message size on this broker.                                                               | JMX Prometheus Exporter |
-| Queue Size                                 | Count     | meter_activemq_broker_queue_size                                        | Number of messages on this broker that have been dispatched but not acknowledged.              | JMX Prometheus Exporter |
+| Monitoring Panel | Unit | Metric Name                                                                                                             | Description                                                              | Data Source |
+|------------------|------|-------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|-------------|
+| Latency          | ms   | meter_kong_service_kong_latency<br />meter_kong_instance_kong_latency<br />meter_kong_endpoint_kong_latency             | Latency added by Kong and enabled plugins for each service/route in Kong | Kong        |
+| Latency          | ms   | meter_kong_service_request_latency<br />meter_kong_instance_request_latency<br />meter_kong_endpoint_request_latency    | Total latency incurred during requests for each service/route in Kong    | Kong        |
+| Latency          | ms   | meter_kong_service_upstream_latency<br />meter_kong_instance_upstream_latency<br />meter_kong_endpoint_upstream_latency | Latency added by upstream response for each service/route in Kong        | Kong        |
 
-### ActiveMQ Destination Supported Metrics
 
-| Monitoring Panel                           |Unit        | Metric Name                                                             | Description                                                                             | Data Source             |
-|--------------------------------------------|------------|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|-------------------------|
-| Producer Count                             | Count      | meter_activemq_destination_producer_count                               | Number of producers attached to this destination.                                       | JMX Prometheus Exporter |
-| Consumer Count                             | Count      | meter_activemq_destination_consumer_count                               | Number of consumers subscribed to this destination.                                     | JMX Prometheus Exporter |
-| Topic Consumer Count                       | Count      | meter_activemq_destination_topic_consumer_count                         | Number of consumers subscribed to the topics.                                           | JMX Prometheus Exporter |
-| Queue Size                                 | Count      | meter_activemq_destination_queue_size                                   | The number of messages that have not been acknowledged by a consumer.                   | JMX Prometheus Exporter |
-| Memory Usage                               | Bytes      | meter_activemq_destination_memory_usage                                 | Memory used by undelivered messages in bytes.                                           | JMX Prometheus Exporter |
-| Memory Percent Usage                       | %          | meter_activemq_destination_memory_percent_usage                         | Percentage of configured memory used by the destination.                                | JMX Prometheus Exporter |
-| Enqueue Count                              | Count      | meter_activemq_destination_enqueue_count                                | The number of messages sent to the destination.                                         | JMX Prometheus Exporter |
-| Dequeue Count                              | Count      | meter_activemq_destination_dequeue_count                                | The number of messages the destination has delivered to consumers.                      | JMX Prometheus Exporter |
-| Average Enqueue Time                       | ms         | meter_activemq_destination_average_enqueue_time                         | The average time a message was held on this destination.                                | JMX Prometheus Exporter |
-| Max Enqueue Time                           | ms         | meter_activemq_destination_max_enqueue_time                             | The max time a message was held on this destination.                                    | JMX Prometheus Exporter |
-| Dispatch Count                             | Count      | meter_activemq_destination_dispatch_count                               | Number of messages that has been delivered to consumers.                                | JMX Prometheus Exporter |
-| Expired Count                              | Count      | meter_activemq_destination_expired_count                                | Number of messages that have been expired.                                              | JMX Prometheus Exporter |
-| Inflight Count                             | Count      | meter_activemq_destination_inflight_count                               | Number of messages that have been dispatched to but not acknowledged by consumers.      | JMX Prometheus Exporter |
-| Average Message Size                       | Bytes      | meter_activemq_destination_average_message_size                         | Average message size on this destination.                                               | JMX Prometheus Exporter |
-| Max Message Size                           | Bytes      | meter_activemq_destination_max_message_size                             | Max message size on this destination.                                                   | JMX Prometheus Exporter |
+### Kong Nginx Supported Metrics
+
+| Monitoring Panel | Unit  | Metric Name                                                                                 | Description                           | Data Source |
+|------------------|-------|---------------------------------------------------------------------------------------------|---------------------------------------|-------------|
+| Nginx            | count | meter_kong_service_nginx_metric_errors_total                                                | Number of nginx-lua-prometheus errors | Kong        |
+| Nginx            | count | meter_kong_service_nginx_connections_total<br />meter_kong_instance_nginx_connections_total | Number of connections by subsystem    | Kong        |
+| Nginx            | count | meter_kong_service_nginx_timers<br />meter_kong_instance_nginx_timers                       | Number of Nginx timers                | Kong        |
 
 ## Imported Dependencies libs and their licenses.
 

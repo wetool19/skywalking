@@ -110,6 +110,8 @@ catalog:
                 path: "/en/setup/backend/backend-apisix-monitoring"
               - name: "AWS API Gateway"
                 path: "/en/setup/backend/backend-aws-api-gateway-monitoring"
+              - name: "Kong Monitoring"
+                path: "/en/setup/backend/backend-kong-monitoring"
           - name: "Database Monitoring"
             catalog:
               - name: "MySQL/MariaDB Server"
@@ -146,6 +148,8 @@ catalog:
                 path: "/en/setup/backend/dashboards-so11y"
               - name: "Satellite self telemetry"
                 path: "/en/setup/backend/dashboards-so11y-satellite"
+              - name: "SkyWalking Java Agent self telemetry"
+                path: "/en/setup/backend/dashboards-so11y-java-agent"
       - name: "Configuration Vocabulary"
         path: "/en/setup/backend/configuration-vocabulary"
       - name: "Advanced Setup"
@@ -400,6 +404,8 @@ catalog:
         path: "/en/changes/changes"
       - name: "10.x Releases"
         catalog:
+        - name: "10.1.0"
+          path: "/en/changes/changes-10.1.0"
         - name: "10.0.1"
           path: "/en/changes/changes-10.0.1"
         - name: "10.0.0"

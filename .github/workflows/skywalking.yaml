@@ -176,12 +176,13 @@ jobs:
           cache: "maven"
       - name: Build distribution tar
         run: |
-          ./mvnw clean install javadoc:javadoc -B -q -Pall \
+          ./mvnw clean flatten:flatten install javadoc:javadoc -B -q -Pall \
             -Dmaven.test.skip \
-            -Dcheckstyle.skip
+            -Dcheckstyle.skip \
+            -Dgpg.skip
       - name: Verify builds are reproducible
-        run: ./mvnw -Dmaven.test.skip clean verify artifact:compare -Pall
-      - uses: actions/upload-artifact@v3
+        run: ./mvnw -Dmaven.test.skip clean flatten:flatten verify artifact:compare -Pall -Dgpg.skip
+      - uses: actions/upload-artifact@v4
         name: Upload distribution tar
         with:
           name: dist
@@ -202,7 +203,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         name: Download distribution tar
         with:
           name: dist
@@ -220,7 +221,7 @@ jobs:
           docker save -o docker-images-skywalking-oap.tar skywalking/oap:latest
           docker save -o docker-images-skywalking-ui.tar skywalking/ui:latest
       - name: Upload docker images
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker-images-${{ matrix.java-version }}
           path: docker-images-skywalking-*.tar
@@ -359,6 +360,8 @@ jobs:
 
           - name: BanyanDB
             config: test/e2e-v2/cases/storage/banyandb/e2e.yaml
+          - name: BanyanDB TLS
+            config: test/e2e-v2/cases/storage/banyandb/tls/e2e.yaml
           - name: Storage H2
             config: test/e2e-v2/cases/storage/h2/e2e.yaml
           - name: Storage MySQL
@@ -402,6 +405,8 @@ jobs:
             config: test/e2e-v2/cases/alarm/mysql/e2e.yaml
           - name: Alarm PostgreSQL
             config: test/e2e-v2/cases/alarm/postgres/e2e.yaml
+          - name: Alarm BanyanDB
+            config: test/e2e-v2/cases/alarm/banyandb/e2e.yaml
 
           - name: TTL ES 7.16.3
             config: test/e2e-v2/cases/ttl/es/e2e.yaml
@@ -662,6 +667,8 @@ jobs:
             config: test/e2e-v2/cases/clickhouse/clickhouse-prometheus-endpoint/e2e.yaml
           - name: ActiveMQ
             config: test/e2e-v2/cases/activemq/e2e.yaml
+          - name: Kong
+            config: test/e2e-v2/cases/kong/e2e.yaml
 
           - name: UI Menu BanyanDB
             config: test/e2e-v2/cases/menu/banyandb/e2e.yaml
@@ -694,7 +701,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         name: Download docker images
         with:
           name: docker-images-11
@@ -717,7 +724,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
       - name: Prepare test services
         shell: bash
-        run: ./mvnw -B -q -f test/e2e-v2/java-test-service/pom.xml clean package
+        run: ./mvnw -B -q -f test/e2e-v2/java-test-service/pom.xml clean flatten:flatten package
       - name: Set env var
         run: |
           echo "${{ matrix.test.env }}"  >> $GITHUB_ENV
@@ -733,7 +740,7 @@ jobs:
           df -h
           du -sh .
           docker images
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         name: Upload Logs
         with:
@@ -766,7 +773,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         name: Download docker images
         with:
           name: docker-images-11
@@ -794,7 +801,7 @@ jobs:
           df -h
           du -sh .
           docker images
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         name: Upload Logs
         with:
@@ -817,7 +824,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         name: Download docker images
         with:
           name: docker-images-${{ matrix.java-version }}

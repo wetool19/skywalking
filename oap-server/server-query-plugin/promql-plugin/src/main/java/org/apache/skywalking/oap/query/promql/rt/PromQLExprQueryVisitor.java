@@ -96,6 +96,11 @@ public class PromQLExprQueryVisitor extends PromQLParserBaseVisitor<ParseResult>
     }
 
     @Override
+    public ParseResult visitParensOp(PromQLParser.ParensOpContext ctx) {
+        return visit(ctx.expression());
+    }
+
+    @Override
     public ParseResult visitAddSubOp(PromQLParser.AddSubOpContext ctx) {
         ParseResult left = visit(ctx.expression(0));
         if (StringUtil.isNotBlank(left.getErrorInfo())) {
@@ -237,7 +242,7 @@ public class PromQLExprQueryVisitor extends PromQLParserBaseVisitor<ParseResult>
             Optional<ValueColumnMetadata.ValueColumn> valueColumn = getValueColumn(metricName);
             if (valueColumn.isEmpty()) {
                 result.setErrorType(ErrorType.BAD_DATA);
-                result.setErrorInfo("Metric: [" + metricName + "] dose not exist.");
+                result.setErrorInfo("Metric: [" + metricName + "] does not exist.");
                 return result;
             }
             if (ctx.labelList() == null) {
@@ -312,7 +317,7 @@ public class PromQLExprQueryVisitor extends PromQLParserBaseVisitor<ParseResult>
         }
 
         String timeRange = ctx.DURATION().getText().toUpperCase();
-        long endTS = System.currentTimeMillis();
+        long endTS = this.duration.getEndTimestamp();
         long startTS = endTS - formatDuration(timeRange).getMillis();
         duration = DurationUtils.timestamp2Duration(startTS, endTS);
         ParseResult result = visit(ctx.metricInstant());

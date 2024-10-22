@@ -24,6 +24,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.skywalking.banyandb.model.v1.BanyandbModel;
 import org.apache.skywalking.banyandb.v1.client.AbstractCriteria;
 import org.apache.skywalking.banyandb.v1.client.AbstractQuery;
 import org.apache.skywalking.banyandb.v1.client.DataPoint;
@@ -175,7 +176,7 @@ public class BanyanDBMetadataQueryDAO extends AbstractBanyanDBDAO implements IMe
     }
 
     @Override
-    public List<Endpoint> findEndpoint(String keyword, String serviceId, int limit) throws IOException {
+    public List<Endpoint> findEndpoint(String keyword, String serviceId, int limit, Duration duration) throws IOException {
         MetadataRegistry.Schema schema = MetadataRegistry.INSTANCE.findMetadata(EndpointTraffic.INDEX_NAME, DownSampling.Minute);
         MeasureQueryResponse resp = query(schema,
                 ENDPOINT_TRAFFIC_TAGS,
@@ -186,6 +187,18 @@ public class BanyanDBMetadataQueryDAO extends AbstractBanyanDBDAO implements IMe
                         if (StringUtil.isNotEmpty(serviceId)) {
                             query.and(eq(EndpointTraffic.SERVICE_ID, serviceId));
                         }
+                        if (StringUtil.isNotEmpty(keyword)) {
+                            query.and(match(EndpointTraffic.NAME, keyword,
+                                            BanyandbModel.Condition.MatchOption.newBuilder().setOperator(
+                                                BanyandbModel.Condition.MatchOption.Operator.OPERATOR_AND).build()
+                            ));
+                        }
+                        if (duration != null) {
+                            final var startTimeBucket = TimeBucket.getMinuteTimeBucket(duration.getStartTimestamp());
+                            final var endTimeBucket = TimeBucket.getMinuteTimeBucket(duration.getEndTimestamp());
+                            query.and(gte(EndpointTraffic.LAST_PING_TIME_BUCKET, startTimeBucket));
+                            query.and(lte(EndpointTraffic.LAST_PING_TIME_BUCKET, endTimeBucket));
+                        }
                         query.setOrderBy(new AbstractQuery.OrderBy(AbstractQuery.Sort.DESC));
                     }
                 });
@@ -193,10 +206,6 @@ public class BanyanDBMetadataQueryDAO extends AbstractBanyanDBDAO implements IMe
         final List<Endpoint> endpoints = new ArrayList<>();
         for (final DataPoint dataPoint : resp.getDataPoints()) {
             endpoints.add(buildEndpoint(dataPoint, schema));
-        }
-
-        if (StringUtil.isNotEmpty(serviceId)) {
-            return endpoints.stream().filter(e -> e.getName().contains(keyword)).collect(Collectors.toList());
         }
         return endpoints;
     }
@@ -259,7 +268,7 @@ public class BanyanDBMetadataQueryDAO extends AbstractBanyanDBDAO implements IMe
     }
 
     @Override
-    public List<Process> listProcesses(String agentId) throws IOException {
+    public List<Process> listProcesses(String agentId, long startPingTimeBucket, long endPingTimeBucket) throws IOException {
         MetadataRegistry.Schema schema = MetadataRegistry.INSTANCE.findMetadata(ProcessTraffic.INDEX_NAME, DownSampling.Minute);
         MeasureQueryResponse resp = query(schema,
                 PROCESS_TRAFFIC_TAGS,
@@ -268,6 +277,8 @@ public class BanyanDBMetadataQueryDAO extends AbstractBanyanDBDAO implements IMe
                     @Override
                     protected void apply(MeasureQuery query) {
                         query.and(eq(ProcessTraffic.AGENT_ID, agentId));
+                        query.and(gte(ProcessTraffic.LAST_PING_TIME_BUCKET, startPingTimeBucket));
+                        query.and(lte(ProcessTraffic.LAST_PING_TIME_BUCKET, endPingTimeBucket));
                         query.and(ne(ProcessTraffic.DETECT_TYPE, ProcessDetectType.VIRTUAL.value()));
                     }
                 });

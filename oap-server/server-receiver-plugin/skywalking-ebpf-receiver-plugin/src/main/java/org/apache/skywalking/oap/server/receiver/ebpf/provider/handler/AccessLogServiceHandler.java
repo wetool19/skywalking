@@ -22,6 +22,7 @@ import io.grpc.stub.StreamObserver;
 import io.vavr.Tuple2;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.skywalking.apm.network.common.v3.DetectPoint;
 import org.apache.skywalking.apm.network.ebpf.accesslog.v3.AccessLogConnection;
 import org.apache.skywalking.apm.network.ebpf.accesslog.v3.AccessLogConnectionTLSMode;
@@ -44,6 +45,8 @@ import org.apache.skywalking.apm.network.common.v3.Instant;
 import org.apache.skywalking.apm.network.ebpf.accesslog.v3.EBPFTimestamp;
 import org.apache.skywalking.apm.network.ebpf.accesslog.v3.IPAddress;
 import org.apache.skywalking.apm.network.ebpf.accesslog.v3.KubernetesProcessAddress;
+import org.apache.skywalking.apm.network.ebpf.accesslog.v3.ZTunnelAttachmentEnvironment;
+import org.apache.skywalking.apm.network.ebpf.accesslog.v3.ZTunnelAttachmentSecurityPolicy;
 import org.apache.skywalking.library.kubernetes.ObjectID;
 import org.apache.skywalking.oap.meter.analyzer.k8s.K8sInfoRegistry;
 import org.apache.skywalking.oap.server.core.Const;
@@ -84,10 +87,11 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         .setServiceName(Const.UNKNOWN)
         .setPodName(Const.UNKNOWN)
         .build();
-    private final SourceReceiver sourceReceiver;
-    private final NamingControl namingControl;
+    protected final SourceReceiver sourceReceiver;
+    protected final NamingControl namingControl;
 
     private final CounterMetrics inCounter;
+    private final CounterMetrics errorStreamCounter;
     private final HistogramMetrics processHistogram;
     private final CounterMetrics dropCounter;
     private final ConcurrentHashMap<String, DropDataReason> dropReasons = new ConcurrentHashMap<>();
@@ -100,13 +104,16 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             .provider()
             .getService(MetricsCreator.class);
         this.inCounter = metricsCreator.createCounter(
-            "k8s_als_in_count", "The count of envoy ALS message received", MetricsTag.EMPTY_KEY,
+            "k8s_als_in_count", "The count of eBPF log entries received", MetricsTag.EMPTY_KEY,
+            MetricsTag.EMPTY_VALUE);
+        this.errorStreamCounter = metricsCreator.createCounter(
+            "k8s_als_error_streams", "The error count of eBPF log streams that OAP failed to process", MetricsTag.EMPTY_KEY,
             MetricsTag.EMPTY_VALUE);
         this.processHistogram = metricsCreator.createHistogramMetric(
-            "k8s_als_in_latency", "The process latency of envoy ALS message received", MetricsTag.EMPTY_KEY,
+            "k8s_als_in_latency", "The processing latency of eBPF log streams", MetricsTag.EMPTY_KEY,
             MetricsTag.EMPTY_VALUE);
         this.dropCounter = metricsCreator.createCounter(
-            "k8s_als_drop_count", "The count of envoy ALS message dropped", MetricsTag.EMPTY_KEY,
+            "k8s_als_drop_count", "The count of eBPF log entries dropped", MetricsTag.EMPTY_KEY,
             MetricsTag.EMPTY_VALUE);
 
         // schedule to print the drop reasons(debug log)
@@ -122,8 +129,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
 
             @Override
             public void onNext(EBPFAccessLogMessage logMessage) {
-                final HistogramMetrics.Timer timer = processHistogram.createTimer();
-                try {
+                try (final var ignored = processHistogram.createTimer()) {
                     if (isFirst || logMessage.hasNode()) {
                         isFirst = false;
                         node = new NodeInfo(logMessage.getNode());
@@ -155,8 +161,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
                     }
                 } catch (Exception e) {
                     log.error("Access log service handler process error.", e);
-                } finally {
-                    timer.finish();
+                    errorStreamCounter.inc();
                 }
             }
 
@@ -190,7 +195,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         return Collections.singletonList(connection.toEndpoint(endpointName, success, duration));
     }
 
-    private void dispatchKernelLog(NodeInfo node, ConnectionInfo connection, AccessLogKernelLog kernelLog) {
+    protected void dispatchKernelLog(NodeInfo node, ConnectionInfo connection, AccessLogKernelLog kernelLog) {
         final List<K8SMetrics> metrics = buildKernelLogMetrics(node, connection, kernelLog)
             .stream().filter(Objects::nonNull).collect(Collectors.toList());
 
@@ -304,7 +309,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         }
     }
 
-    private void dispatchProtocolLog(NodeInfo node, ConnectionInfo connection,
+    protected void dispatchProtocolLog(NodeInfo node, ConnectionInfo connection,
                                      List<AccessLogKernelLog> relatedKernelLogs, AccessLogProtocolLogs protocolLog) {
         long startTimeBucket = 0;
         boolean success = false;
@@ -359,7 +364,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             });
     }
 
-    private long getDurationFromTimestamp(NodeInfo nodeInfo, EBPFTimestamp start, EBPFTimestamp end) {
+    protected long getDurationFromTimestamp(NodeInfo nodeInfo, EBPFTimestamp start, EBPFTimestamp end) {
         return end.getOffset().getOffset() - start.getOffset().getOffset();
     }
 
@@ -421,7 +426,8 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         switch (protocol.getProtocolCase()) {
             case HTTP:
                 final AccessLogHTTPProtocol http = protocol.getHttp();
-                return namingControl.formatEndpointName(serviceName, http.getRequest().getPath());
+                return namingControl.formatEndpointName(serviceName,
+                    StringUtils.upperCase(http.getRequest().getMethod().name()) + ":" + http.getRequest().getPath());
             default:
                 return null;
         }
@@ -483,11 +489,23 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         });
     }
 
-    protected KubernetesProcessAddress buildKubernetesAddressByIP(NodeInfo nodeInfo, IPAddress ipAddress) {
-        final ObjectID pod = K8sInfoRegistry.getInstance().findPodByIP(ipAddress.getHost());
+    protected KubernetesProcessAddress buildKubernetesAddressByIP(NodeInfo nodeInfo, AccessLogConnection connection, boolean isLocal, IPAddress ipAddress) {
+        String host = ipAddress.getHost();
+        // if the resolving address is not local, and have attached ztunnel info, then using the ztunnel mapped host
+        if (!isLocal && connection.hasAttachment() && connection.getAttachment().hasZTunnel()) {
+            final ZTunnelAttachmentEnvironment ztunnel = connection.getAttachment().getZTunnel();
+            host = ztunnel.getRealDestinationIp();
+            log.debug("detected the ztunnel connection, so update the remote IP address as: {}, detect by: {}", host,
+                ztunnel.getBy());
+        }
+        final ObjectID service = K8sInfoRegistry.getInstance().findServiceByIP(host);
+        if (service != ObjectID.EMPTY) {
+            return buildRemoteAddress(nodeInfo, service, null);
+        }
+        final ObjectID pod = K8sInfoRegistry.getInstance().findPodByIP(host);
         if (pod == ObjectID.EMPTY) {
             // if cannot found the address, then return the unknown address
-            log.debug("building unknown address by ip: {}:{}", ipAddress.getHost(), ipAddress.getPort());
+            log.debug("building unknown address by ip: {}:{}", host, ipAddress.getPort());
             return buildUnknownAddress();
         }
         final ObjectID serviceName = K8sInfoRegistry.getInstance().findService(pod.namespace(), pod.name());
@@ -511,11 +529,39 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         }
         return KubernetesProcessAddress.newBuilder()
             .setServiceName(serviceName)
-            .setPodName(pod.name())
+            .setPodName(pod == null ? "" : pod.name())
             .build();
     }
 
-    private class ConnectionInfo {
+    protected int buildConnectionComponentId(ConnectionInfo connectionInfo) {
+        final AccessLogConnection originalConnection = connectionInfo.getOriginalConnection();
+        if (originalConnection.hasAttachment() && originalConnection.getAttachment().hasZTunnel() &&
+            ZTunnelAttachmentSecurityPolicy.MTLS.equals(originalConnection.getAttachment().getZTunnel().getSecurityPolicy())) {
+            return 142; // mTLS
+        }
+        return buildProtocolComponentID(connectionInfo);
+    }
+
+    protected int buildProtocolComponentID(ConnectionInfo connectionInfo) {
+        boolean isTLS = connectionInfo.getTlsMode() == AccessLogConnectionTLSMode.TLS;
+        switch (connectionInfo.getProtocolType()) {
+            case HTTP_1:
+            case HTTP_2:
+                if (isTLS) {
+                    return 129; // https
+                }
+                return 49;  // http
+            case TCP:
+                if (isTLS) {
+                    return 130; // tls
+                }
+                return 110; // tcp
+        }
+        return 0;
+    }
+
+    @Getter
+    public class ConnectionInfo {
         private final AccessLogConnection originalConnection;
         private final NamingControl namingControl;
         private final KubernetesProcessAddress local;
@@ -524,14 +570,13 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         private final AccessLogConnectionTLSMode tlsMode;
         private final AccessLogProtocolType protocolType;
         private final NodeInfo nodeInfo;
-        @Getter
         private final boolean valid;
 
         public ConnectionInfo(NamingControl namingControl, NodeInfo nodeInfo, AccessLogConnection connection) {
             this.originalConnection = connection;
             this.namingControl = namingControl;
-            this.local = buildAddress(nodeInfo, connection.getLocal());
-            this.remote = buildAddress(nodeInfo, connection.getRemote());
+            this.local = buildAddress(nodeInfo, connection, true, connection.getLocal());
+            this.remote = buildAddress(nodeInfo, connection, false, connection.getRemote());
             this.role = connection.getRole();
             this.tlsMode = connection.getTlsMode();
             this.nodeInfo = nodeInfo;
@@ -543,12 +588,12 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             }
         }
 
-        private KubernetesProcessAddress buildAddress(NodeInfo nodeInfo, ConnectionAddress address) {
+        private KubernetesProcessAddress buildAddress(NodeInfo nodeInfo, AccessLogConnection connection, boolean local, ConnectionAddress address) {
             switch (address.getAddressCase()) {
                 case KUBERNETES:
                     return address.getKubernetes();
                 case IP:
-                    return buildKubernetesAddressByIP(nodeInfo, address.getIp());
+                    return buildKubernetesAddressByIP(nodeInfo, connection, local, address.getIp());
             }
             return null;
         }
@@ -583,7 +628,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         }
 
         public K8SServiceInstance toServiceInstance() {
-            if (Objects.equals(local, buildUnknownAddress())) {
+            if (Objects.equals(local, buildUnknownAddress()) || StringUtil.isEmpty(local.getPodName())) {
                 return null;
             }
             final K8SServiceInstance serviceInstance = new K8SServiceInstance();
@@ -608,7 +653,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             serviceRelation.setSourceLayer(Layer.K8S_SERVICE);
 
             serviceRelation.setDetectPoint(parseToSourceRole());
-            serviceRelation.setComponentId(buildComponentId());
+            serviceRelation.setComponentId(buildConnectionComponentId(this));
             serviceRelation.setTlsMode(tlsMode);
 
             serviceRelation.setDestServiceName(destServiceName);
@@ -617,6 +662,9 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
         }
 
         public K8SServiceInstanceRelation toServiceInstanceRelation() {
+            if (StringUtil.isEmpty(local.getPodName()) || StringUtil.isEmpty(remote.getPodName())) {
+                return null;
+            }
             final Tuple2<KubernetesProcessAddress, KubernetesProcessAddress> tuple = convertSourceAndDestAddress();
             final K8SServiceInstanceRelation serviceInstanceRelation = new K8SServiceInstanceRelation();
             final String sourceServiceName = buildServiceNameByAddress(nodeInfo, tuple._1);
@@ -636,7 +684,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             return serviceInstanceRelation;
         }
 
-        private Tuple2<KubernetesProcessAddress, KubernetesProcessAddress> convertSourceAndDestAddress() {
+        public Tuple2<KubernetesProcessAddress, KubernetesProcessAddress> convertSourceAndDestAddress() {
             KubernetesProcessAddress source, dest;
             if (role == DetectPoint.server) {
                 source = this.remote;
@@ -664,25 +712,7 @@ public class AccessLogServiceHandler extends EBPFAccessLogServiceGrpc.EBPFAccess
             return endpoint;
         }
 
-        private int buildComponentId() {
-            boolean isTLS = tlsMode == AccessLogConnectionTLSMode.TLS;
-            switch (protocolType) {
-                case HTTP_1:
-                case HTTP_2:
-                    if (isTLS) {
-                        return 129; // https
-                    }
-                    return 49;  // http
-                case TCP:
-                    if (isTLS) {
-                        return 130; // tls
-                    }
-                    return 110; // tcp
-            }
-            return 0;
-        }
-
-        private org.apache.skywalking.oap.server.core.source.DetectPoint parseToSourceRole() {
+        public org.apache.skywalking.oap.server.core.source.DetectPoint parseToSourceRole() {
             switch (role) {
                 case server:
                     return org.apache.skywalking.oap.server.core.source.DetectPoint.SERVER;
